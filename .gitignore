@@ -1,0 +1,24 @@
+# Build artifacts
+build/
+DerivedData/
+*.dmg
+
+# Git backup (owner decision: keep locally, never commit)
+.git.backup-*/
+
+# Dead-render archive (owner decision: keep locally, do not commit yet)
+archive/
+
+# macOS
+.DS_Store
+
+# Exported diagnostics logs (G-DIAG; may contain .private paths, never commit)
+duckmd-diagnostics-*.log
+
+# Local-only (not for GitHub)
+docs/HANDOFF.md
+docs/HANDOFF_STAGE*.md
+.agents/
+ЛОГО/
+**/.preview_test.html
+xcuserdata/

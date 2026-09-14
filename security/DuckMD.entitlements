@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Минимальный набор для Developer ID (прямая раздача, без MAS).
+	  Специальные entitlements НЕ нужны:
+	    - com.apple.security.cs.allow-jit — не требуется (WKWebView не использует JIT-entitlement)
+	    - com.apple.security.app-sandbox  — не требуется вне MAS (решение владельца)
+	  Hardened runtime включается build setting ENABLE_HARDENED_RUNTIME (project.yml),
+	  отдельного entitlement для него не нужно.
+	-->
+</dict>
+</plist>

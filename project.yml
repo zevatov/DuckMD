@@ -1,0 +1,116 @@
+name: DuckMD
+options:
+  bundleIdPrefix: net.duckmd
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+settings:
+  base:
+    SWIFT_VERSION: "5"
+    MARKETING_VERSION: "0.6.15"
+    CURRENT_PROJECT_VERSION: "10"
+    DEVELOPMENT_LANGUAGE: ru
+packages:
+  swift-markdown:
+    url: https://github.com/swiftlang/swift-markdown.git
+    from: "0.4.0"
+targets:
+  DuckMD:
+    type: application
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: DuckMD
+    dependencies:
+      - package: swift-markdown
+        product: Markdown
+    info:
+      path: DuckMD/Info.plist
+      properties:
+        CFBundleDisplayName: DuckMD
+        CFBundleName: DuckMD
+        # Версия — из build setting MARKETING_VERSION (0.6.15), чтобы не дублировать.
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSMinimumSystemVersion: "26.0"
+        LSApplicationCategoryType: public.app-category.productivity
+        NSSupportsAutomaticTermination: true
+        # Sudden Termination выключен (Этап 0): приложение пишет файлы, внезапное убийство портит документы.
+        NSSupportsSuddenTermination: false
+        NSHumanReadableCopyright: "© 2026 DuckMD"
+        # Ассоциация .md: ТОЛЬКО системный тип net.daringfireball.markdown
+        # (встроен в macOS 12+; deployment target — macOS 26). Раньше рядом
+        # экспортировался собственный тип net.duckingfireball.markdown (опечатка
+        # в идентификаторе) с теми же расширениями .md — конкурирующие заявки на
+        # расширение ломали открытие .md двойным кликом из Finder.
+        # UTExported/UTImported-декларации удалены: системный тип повторно
+        # объявлять не нужно и нельзя без конфликтов LaunchServices.
+        # Этап 5: public.plain-text (TXT) снят — DuckMD НЕ владеет системным
+        # TXT и не перехватывает его у TextEdit (LSHandlerRank: Owner на
+        # public.plain-text делал владельцем нас). Открытие .txt остаётся
+        # через «Открыть документ…»/drag&drop и конвертер (вход конвертера
+        # не зависит от CFBundleDocumentTypes, R-CONV-1/R-HUB-5).
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Markdown
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Owner
+            LSItemContentTypes:
+              - net.daringfireball.markdown
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: net.duckmd.DuckMD
+        PRODUCT_NAME: DuckMD
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_PREVIEWS: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: security/DuckMD.entitlements
+        # DEVELOPMENT_TEAM: "XXXXXXXXXX" # TODO(владелец): вписать Team ID после вступления в Apple Developer Program
+        CODE_SIGNING_ALLOWED: "YES"
+        COMBINE_HIDPI_IMAGES: "YES"
+      configs:
+        # Имена ключей = имена build configurations в Xcode-проекте (Debug / Release).
+        Debug:
+          # Dev-цикл: ad-hoc подпись, работает БЕЗ сертификата.
+          CODE_SIGN_IDENTITY: "-"
+          CODE_SIGNING_REQUIRED: "NO"
+        Release:
+          # Локальная тестовая сборка без платного аккаунта: сертификат «Apple Development»
+          # (бесплатная персональная команда) + hardened runtime, Manual-подпись.
+          # Проверка: security find-identity -v -p codesigning
+          # Для платной раздачи (Developer ID + notarization) см. scripts/build-release.sh.
+          CODE_SIGN_STYLE: Manual
+          PROVISIONING_PROFILE_SPECIFIER: ""
+          CODE_SIGN_IDENTITY: "Apple Development"
+          DEVELOPMENT_TEAM: "3ZMM724J2P"
+          CODE_SIGNING_REQUIRED: "YES"
+
+  # R10: unit-тесты (XCTest) на чистую логику: парсер, HTML-рендер,
+  # RenderEditParser, лёгкие кейсы ConverterService, лимит RecentFilesStore.
+  # Хост — приложение DuckMD (TEST_HOST ставит xcodegen автоматически).
+  DuckMDTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: DuckMDTests
+    dependencies:
+      - target: DuckMD
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+
+# R10: явная схема с test-экшеном, чтобы `xcodebuild test -scheme DuckMD`
+# запускал юнит-тесты без ручной настройки в Xcode.
+schemes:
+  DuckMD:
+    build:
+      targets:
+        DuckMD: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - DuckMDTests
