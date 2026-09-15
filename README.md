@@ -1,31 +1,78 @@
 # 🦆 DuckMD
 
+<p align="center">
+  <img src="DuckMD/Assets.xcassets/AppIcon.appiconset/icon_1024.png" width="110" height="110" alt="DuckMD App Icon" />
+</p>
+
+<p align="center">
+  <a href="https://github.com/zevatov/DuckMD"><img src="https://img.shields.io/badge/macOS-14.0%2B-007AFF.svg?style=flat-square" alt="Platform" /></a>
+  <a href="https://swift.org"><img src="https://img.shields.io/badge/Swift-5.9%20%2F%20SwiftUI-FF5A00.svg?style=flat-square" alt="Swift" /></a>
+  <a href="https://github.com/zevatov/DuckMD"><img src="https://img.shields.io/badge/Tests-131%20Passed-34C759.svg?style=flat-square" alt="Tests" /></a>
+  <a href="https://github.com/zevatov/DuckMD/releases"><img src="https://img.shields.io/badge/Release-v0.6.15-5856D6.svg?style=flat-square" alt="Release" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-gray.svg?style=flat-square" alt="License" /></a>
+  <a href="https://github.com/zevatov/DuckMD"><img src="https://img.shields.io/badge/Offline-100%25%20Local-success.svg?style=flat-square" alt="Offline" /></a>
+</p>
+
 > **Мгновенный, красивый Markdown-ридер для macOS** — как Apple Notes, только для `.md`.
 > Оптимизирован под чтение и правку отчётов и текстов от нейросетей.
-> **Версия:** 0.6.15 (`MARKETING_VERSION` в `project.yml` — единый источник версии → `CFBundleShortVersionString` в `Info.plist`) · **Платформа:** macOS 26+ · **Стек:** SwiftUI + WKWebView + swift-markdown
+> **Версия:** 0.6.15 (`MARKETING_VERSION` в `project.yml` — единый источник версии → `CFBundleShortVersionString` в `Info.plist`) · **Платформа:** macOS 14+ · **Стек:** SwiftUI + WKWebView + swift-markdown
 > **Дизайн:** Apple Notes × Bear × Liquid Glass · **Маскот:** гранёная (low-poly) уточка
+
+<p align="center">
+  <img src="docs/assets/duckmd-demo.gif" width="760" alt="DuckMD Live Demo" />
+</p>
 
 ---
 
 ## Что это
 
-Открыл `.md` двойным кликом — и через **<1 секунду** видишь красивый текст. Без загрузки редактора, без лишних кнопок. 
+Открыл `.md` двойным кликом — и через **<1 секунду** видишь красивый текст. Без загрузки тяжеловесных редакторов, без Electron и лишних кнопок. 
 
 Хочешь поправить — режим «Правка» (код + живой рендер рядом) с умным автоформатированием (Enter в списке → новый пункт, авто-закрытие `**`, триггеры `# `/`- `).
 
-При запуске приложения без файла единое окно `main` показывает **хаб-состояние** (`MainContainerView` + `HubView`, без отдельного `HubWindow`) в macOS-стиле. В нем собраны недавние файлы (без ограничений на количество), встроен нативный поиск и сортировка, а также три карточки быстрых действий (Новый документ, Открыть существующий, Конвертировать). Открытие документа и возврат кнопкой «← Хаб» — переключение состояний того же окна (`.opacity` 0.18s).
+<p align="center">
+  <img src="docs/assets/duckmd-editor.png" width="760" alt="DuckMD Split Editor" /><br>
+  <em>Режим правки: исходный Markdown слева и живой рендер справа с оптической синхронизацией скролла</em>
+</p>
+
+При запуске приложения без файла единое окно `main` показывает **хаб-состояние** (`MainContainerView` + `HubView`, без отдельного `HubWindow`) в macOS-стиле. В нём собраны недавние файлы (без ограничений на количество), встроен нативный поиск и сортировка, а также три карточки быстрых действий (Новый документ, Открыть существующий, Конвертировать). Открытие документа и возврат кнопкой «← Хаб» — переключение состояний того же окна (`.opacity` 0.18s).
+
+<p align="center">
+  <img src="docs/assets/duckmd-hub.png" width="760" alt="DuckMD Hub" /><br>
+  <em>Интерактивный Хаб: быстрый доступ, сквозной поиск и недавние документы</em>
+</p>
 
 Встроен **Конвертер документов** (DOCX, PDF, RTF, HTML, TXT). Вы перетаскиваете любой файл, и приложение автоматически конвертирует его в `.md`, сохраняет в папку по умолчанию (`~/Documents/DuckMD`) и сразу открывает в редакторе.
 
-В настройках доступна смена тем отображения (Apple, Paper, Mono, Ocean, Night) с живым обновлением, регулировка ширины контента, умное автосохранение и социальные ссылки (Telegram/GitHub).
+В настройках доступна смена тем отображения (Apple, Paper, Mono, Ocean, Night) с живым обновлением, регулировка ширины контента, умное автосохранение и ссылки на репозиторий.
 
 Маскот — стильная жёлтая low-poly уточка, которая автоматически адаптируется под системную тему оформления.
 
 ---
 
+## 🗺 Roadmap и планы
+
+### Большая цель: сборник нативных программ для macOS (как Office, только локальный и быстрый)
+Планируется создать комплект базовых рабочих программ для macOS по типу Microsoft Office, но со своей философией:
+- **Супербыстро и нативно:** Только чистый Swift, SwiftUI и AppKit. Никаких чудовищных Electron-обёрток, лагов и жора оперативной памяти.
+- **100% локально и приватно:** Никаких обязательных аккаунтов, облачных синхронизаций, телеметрии и слежки. Документы живут только на вашей машине.
+- **Полностью бесплатно:** Доступные инструменты для работы без подписок и скрытых платежей.
+
+**Состав пакета:**
+1. **DuckMD** — просмотр, редактор и конвертер Markdown/текстовых документов.
+2. **DuckSheets (в планах)** — шустрые локальные таблицы (CSV, TSV, XLSX) без тормозов Excel.
+3. **DuckSlides (в планах)** — быстрая сборка слайдов и презентаций из простого структурированного текста.
+
+### Ближайшие обновления DuckMD
+- ⚙️ **Обновление внешнего вида Настроек:** Освежить меню параметров — сделать современный вид в духе нативных системных настроек macOS (аккуратные иконки в скруглённых плашках, понятная эргономика).
+- 🎨 **Поднастройка интерфейса:** Докрутить сплиттер, отступы тулбара и анимации переходов между хабом и документом.
+- 🔔 **Индикатор обновления версий:** Добавить деликатный индикатор наличия свежих релизов с GitHub Releases, чтобы видеть обновления прямо в приложении и скачивать свежий DMG в один клик.
+
+---
+
 ## 📚 Документация
 
-Полная спецификация проекта живет в [`docs/`](./docs). **Читай в этом порядке:**
+Полная спецификация проекта живёт в [`docs/`](./docs). **Читай в этом порядке:**
 
 | Документ | О чём |
 |  ---  |  ---  |
@@ -40,7 +87,7 @@
 ## 🚀 Быстрый старт
 
 ```bash
-# Требования: macOS 26+, Xcode 26+, xcodegen
+# Требования: macOS 14+, Xcode 15+, xcodegen
 # brew install xcodegen   # если ещё не установлен
 
 # 1. Сгенерировать Xcode-проект
@@ -81,8 +128,9 @@ open ~/Library/Developer/Xcode/DerivedData/DuckMD-*/Build/Products/Debug/DuckMD.
 DuckMD/
 ├── README.md                    ← вы здесь
 ├── project.yml                  ← манифест xcodegen (зависимости, target, Info.plist)
-├── docs/                        ← спецификация
-│   ├── SPEC.md · ARCHITECTURE.md · UX.md · DECISIONS.md · CHANGELOG.md
+├── docs/                        ← спецификация и ассеты
+│   ├── assets/                  ← скриншоты и демо-гифка интерфейса
+│   └── SPEC.md · ARCHITECTURE.md · UX.md · DECISIONS.md · CHANGELOG.md
 ├── scripts/
 │   ├── generate_icon.swift      ← генерация иконки-утки (PNG 1024)
 │   └── build-test-dmg.sh        ← сборка локального тестового DMG
@@ -105,36 +153,32 @@ DuckMD/
 
 | | |
 |---|---|
-| **Боль** | Посмотреть `.md` красиво сейчас = открыть тяжелый IDE, ждать, нажать рендер, развернуть |
+| **Боль** | Посмотреть `.md` красиво сейчас = открыть тяжёлый IDE, ждать, нажать рендер, развернуть |
 | **Решение** | Двойной клик → мгновенно красивый рендер в стиле Apple Notes |
 | **Вайб** | Apple Notes × Bear × Liquid Glass, жёлтый акцент, low-poly маскот-утка |
 | **Аудитория** | Те, кто работает с отчётами/текстами нейросетей |
 
 ---
 
-© 2026 DuckMD · Лицензия [MIT](./LICENSE) · [Документация](./docs) · [История изменений](./CHANGELOG.md) · `v0.6.15`
-
----
-
 ## 📦 Установка из GitHub (GitHub-flow, без Developer ID/notarization)
 
-> Требования: macOS 26+, Xcode 26+, xcodegen (`brew install xcodegen`).
+> Требования: macOS 14+, Xcode 15+, xcodegen (`brew install xcodegen`).
 > Нотаризация (notarization) не выполняется осознанно; подпись только локальная (Apple Development / ad-hoc) + hardened runtime.
 
 Дистрибуция — только через GitHub Releases как типичный open-source Mac-проект: versioned DMG `build/dist/DuckMD-<VERSION>.dmg` из [`scripts/build-test-dmg.sh`](./scripts/build-test-dmg.sh) с локальной подписью (Apple Development / ad-hoc) + hardened runtime. Developer ID и notarization отсутствуют осознанно (см. [`docs/DECISIONS.md`](./docs/DECISIONS.md) D-25 и [`docs/SPEC.md`](./docs/SPEC.md) N-8).
 
 ### Вариант A — готовый DMG из GitHub Releases
 
-1. Скачай `DuckMD-<VERSION>.dmg` из GitHub Releases.
-2. Открой DMG и перетащи `DuckMD-<VERSION>.app` в `Applications`.
+1. Скачай `DuckMD-0.6.15.dmg` из [GitHub Releases](https://github.com/zevatov/DuckMD/releases).
+2. Открой DMG и перетащи `DuckMD-0.6.15.app` в `Applications`.
 
 ### Вариант B — сборка из исходников
 
 ```bash
-# 0. Требования: macOS 26+, Xcode 26+, xcodegen
+# 0. Требования: macOS 14+, Xcode 15+, xcodegen
 # brew install xcodegen   # если ещё не установлен
 
-# 1. Клонирование (URL — со страницы GitHub-репозитория / Releases):
+# 1. Клонирование:
 git clone https://github.com/zevatov/DuckMD.git
 cd DuckMD
 
@@ -147,8 +191,12 @@ DRY_RUN=1 ./scripts/build-test-dmg.sh      # dry-run: показать план 
 SIGN_MODE=adhoc ./scripts/build-test-dmg.sh  # fallback без сертификата (только эта машина)
 ```
 
-Установка релиза из GitHub требует Gatekeeper-обхода (подпись локальная, без notarization, только для macOS 26+):
+Установка релиза из GitHub требует Gatekeeper-обхода (подпись локальная, без notarization):
 
 1. Открой DMG и перетащи `DuckMD-<VERSION>.app` в `Applications`.
 2. Первый запуск при ad-hoc подписи — правый клик по приложению → «Открыть» → подтвердить (либо снятие карантина в терминале: `xattr -d com.apple.quarantine /Applications/DuckMD-<VERSION>.app`, для рекурсивного снятия — `xattr -dr com.apple.quarantine /Applications/DuckMD-<VERSION>.app`).
 3. Версия в приложении читается из Bundle (`CFBundleShortVersionString` ← `MARKETING_VERSION = 0.6.15` в `project.yml`).
+
+---
+
+© 2026 DuckMD · Лицензия [MIT](./LICENSE) · [Документация](./docs) · [История изменений](./CHANGELOG.md) · `v0.6.15`
