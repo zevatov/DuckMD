@@ -1,17 +1,5 @@
 # 🦆 DuckMD
 
-<p align="center">
-  <img src="DuckMD/Assets.xcassets/AppIcon.appiconset/icon_1024.png" width="110" height="110" alt="DuckMD App Icon" />
-</p>
-
-<p align="center">
-  <a href="https://github.com/zevatov/DuckMD"><img src="https://img.shields.io/badge/macOS-14.0%2B-007AFF.svg?style=flat-square" alt="Platform" /></a>
-  <a href="https://swift.org"><img src="https://img.shields.io/badge/Swift-5.9%20%2F%20SwiftUI-FF5A00.svg?style=flat-square" alt="Swift" /></a>
-  <a href="https://github.com/zevatov/DuckMD"><img src="https://img.shields.io/badge/Tests-131%20Passed-34C759.svg?style=flat-square" alt="Tests" /></a>
-  <a href="https://github.com/zevatov/DuckMD/releases"><img src="https://img.shields.io/badge/Release-v0.6.15-5856D6.svg?style=flat-square" alt="Release" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-gray.svg?style=flat-square" alt="License" /></a>
-  <a href="https://github.com/zevatov/DuckMD"><img src="https://img.shields.io/badge/Offline-100%25%20Local-success.svg?style=flat-square" alt="Offline" /></a>
-</p>
 
 > **Мгновенный, красивый Markdown-ридер для macOS** — как Apple Notes, только для `.md`.
 > Оптимизирован под чтение и правку отчётов и текстов от нейросетей.
@@ -30,17 +18,7 @@
 
 Хочешь поправить — режим «Правка» (код + живой рендер рядом) с умным автоформатированием (Enter в списке → новый пункт, авто-закрытие `**`, триггеры `# `/`- `).
 
-<p align="center">
-  <img src="docs/assets/duckmd-editor.png" width="760" alt="DuckMD Split Editor" /><br>
-  <em>Режим правки: исходный Markdown слева и живой рендер справа с оптической синхронизацией скролла</em>
-</p>
-
 При запуске приложения без файла единое окно `main` показывает **хаб-состояние** (`MainContainerView` + `HubView`, без отдельного `HubWindow`) в macOS-стиле. В нём собраны недавние файлы (без ограничений на количество), встроен нативный поиск и сортировка, а также три карточки быстрых действий (Новый документ, Открыть существующий, Конвертировать). Открытие документа и возврат кнопкой «← Хаб» — переключение состояний того же окна (`.opacity` 0.18s).
-
-<p align="center">
-  <img src="docs/assets/duckmd-hub.png" width="760" alt="DuckMD Hub" /><br>
-  <em>Интерактивный Хаб: быстрый доступ, сквозной поиск и недавние документы</em>
-</p>
 
 Встроен **Конвертер документов** (DOCX, PDF, RTF, HTML, TXT). Вы перетаскиваете любой файл, и приложение автоматически конвертирует его в `.md`, сохраняет в папку по умолчанию (`~/Documents/DuckMD`) и сразу открывает в редакторе.
 
