@@ -135,7 +135,7 @@ DuckMD/
 # brew install xcodegen   # если ещё не установлен
 
 # 1. Клонирование (URL — со страницы GitHub-репозитория / Releases):
-git clone <URL-репозитория-DuckMD>
+git clone https://github.com/zevatov/DuckMD.git
 cd DuckMD
 
 # 2. Генерация Xcode-проекта:
