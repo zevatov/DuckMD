@@ -7,8 +7,17 @@ struct HubCardView: View {
     let onRemove: () -> Void
     
     @State private var isHovered = false
-    @State private var isPressed = false
     @State private var showInfoPopover = false
+
+    /// Один форматтер на все карточки: DateFormatter дорогой в создании.
+    private static let relativeDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        formatter.doesRelativeDateFormatting = true
+        formatter.locale = Locale(identifier: "ru_RU")
+        return formatter
+    }()
     
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -17,14 +26,12 @@ struct HubCardView: View {
                     .font(.system(size: 16))
                     .foregroundColor(file.exists ? .accentColor : .secondary)
                 
-                MarqueeText(
-                    text: file.title,
-                    font: .system(size: 14),
-                    fontWeight: .semibold,
-                    isHovered: isHovered
-                )
-                .foregroundColor(file.exists ? .primary : .secondary)
-                .help(file.title)
+                Text(file.title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .foregroundColor(file.exists ? .primary : .secondary)
+                    .help(file.title)
                 
                 Spacer(minLength: 4)
                 
@@ -81,16 +88,15 @@ struct HubCardView: View {
         .contentShape(RoundedRectangle(cornerRadius: 12))
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(file.exists ? AnyShapeStyle(.regularMaterial) : AnyShapeStyle(Color.gray.opacity(0.1)))
+                .fill(file.exists
+                      ? Color(nsColor: .controlBackgroundColor)
+                      : Color.gray.opacity(0.1))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .stroke(isHovered && file.exists ? Color.accentColor.opacity(0.4) : Color.clear, lineWidth: 1)
         )
-        .shadow(color: Color.black.opacity(isHovered && file.exists ? 0.08 : 0.01), radius: isHovered ? 6 : 2, x: 0, y: 2)
-        .scaleEffect(isPressed ? 0.98 : (isHovered && file.exists ? 1.02 : 1.0))
         .animation(.easeInOut(duration: 0.15), value: isHovered)
-        .animation(.easeInOut(duration: 0.05), value: isPressed)
         .onHover { hovering in
             isHovered = hovering
         }
@@ -115,12 +121,7 @@ struct HubCardView: View {
     }
     
     private func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        formatter.doesRelativeDateFormatting = true
-        formatter.locale = Locale(identifier: "ru_RU")
-        return formatter.string(from: date)
+        Self.relativeDateFormatter.string(from: date)
     }
 
     private var fileInfoPopover: some View {

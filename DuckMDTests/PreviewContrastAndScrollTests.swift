@@ -212,4 +212,113 @@ final class PreviewContrastAndScrollTests: XCTestCase {
         XCTAssertTrue(PreviewBridgeScript.source.contains("nextBlock"), "Скрипт должен отслеживать nextBlock для плавной интерполяции")
         XCTAssertTrue(PreviewBridgeScript.source.contains("totalDistance"), "Скрипт должен плавно интерполировать расстояние между блоками")
     }
+
+    // MARK: - Контракт B2/B3 и конца жеста (без WKWebView)
+
+    /// .table-container не является scrollport: overflow visible, без overflow-x и touch-scrolling.
+    func testTableContainerDoesNotOwnScrollport() {
+        let html = MarkdownDocument.buildFullHTML(from: "# T", theme: .neutral, baseURL: nil)
+        let rule = cssRule(named: ".table-container", in: html)
+        XCTAssertTrue(rule.contains("overflow: visible"), rule)
+        XCTAssertFalse(rule.contains("overflow-x: auto"), rule)
+        XCTAssertFalse(rule.contains("-webkit-overflow-scrolling"), rule)
+    }
+
+    /// Таблица внутри контейнера не клипует левый бордер: visible, radius 0, separate + spacing 0.
+    func testTableInsideContainerKeepsBorderInsideBox() {
+        let html = MarkdownDocument.buildFullHTML(from: "# T", theme: .neutral, baseURL: nil)
+        let rule = cssRule(named: ".table-container table", in: html)
+        XCTAssertTrue(rule.contains("overflow: visible"), rule)
+        XCTAssertTrue(rule.contains("border-radius: 0"), rule)
+        XCTAssertTrue(rule.contains("border-collapse: separate"), rule)
+        XCTAssertTrue(rule.contains("border-spacing: 0"), rule)
+    }
+
+    /// Конец жеста превью — scrollend, не таймер. Программный scrollend позицию не постит.
+    /// Юнит-тест жест WKWebView не закрывает: проверяется только исходник скрипта.
+    func testBridgeClearsProgrammaticFlagOnScrollEndNotTimer() {
+        let source = PreviewBridgeScript.source
+        XCTAssertTrue(source.contains("addEventListener('scrollend'"))
+        guard let raf = source.range(of: "requestAnimationFrame(function()") else {
+            XCTFail("нет requestAnimationFrame")
+            return
+        }
+        let insideRAF = source[raf.upperBound...]
+        XCTAssertNotNil(insideRAF.range(of: "if (_isProgrammatic) return;"),
+                        "проверка _isProgrammatic обязана быть внутри rAF, не только до него")
+        XCTAssertFalse(source.contains("setTimeout(function() { _isProgrammatic = false; }, 40)"))
+        XCTAssertFalse(source.contains("setTimeout(function() { _isProgrammatic = false; }, 150)"))
+        XCTAssertFalse(source.contains("_isProgrammatic = false;\n            }, 80)"))
+        XCTAssertFalse(source.contains("}, 80)"))
+
+        guard let scrollEnd = source.range(of: "addEventListener('scrollend'") else {
+            XCTFail("нет слушателя scrollend")
+            return
+        }
+        let tail = source[scrollEnd.lowerBound...]
+        guard let close = tail.range(of: "});") else {
+            XCTFail("слушатель scrollend не закрыт")
+            return
+        }
+        let handler = String(tail[..<close.upperBound])
+        let programmaticBranch = handler.range(of: "if (_isProgrammatic)")
+        let post = handler.range(of: "_postScrollSample(true)")
+        XCTAssertNotNil(programmaticBranch)
+        XCTAssertNotNil(post)
+        if let programmaticBranch, let post {
+            XCTAssertLessThan(programmaticBranch.lowerBound, post.lowerBound)
+        }
+        XCTAssertTrue(handler.contains("return;"),
+                      "программный scrollend обязан выйти до поста позиции")
+    }
+
+    /// Лидер-редактор шлёт в превью только долю: строка не центрирует HTML-блок.
+    /// Жест WebKit не имитируется.
+    func testEditorLeaderDoesNotUseLinePositionForPreview() {
+        let line = (line: 12, offset: CGFloat(0.4), fraction: CGFloat(0.33))
+        let command = SplitEditorView.previewScrollCommand(
+            leader: .editor,
+            fraction: 0.33,
+            linePosition: line
+        )
+        XCTAssertEqual(command.fraction, 0.33, accuracy: 0.0001)
+        XCTAssertNil(command.linePosition, "при лидере-редакторе строковая позиция превью не используется")
+
+        let kept = SplitEditorView.previewScrollCommand(
+            leader: .preview,
+            fraction: 0.33,
+            linePosition: line
+        )
+        XCTAssertEqual(kept.linePosition?.line, 12)
+        XCTAssertEqual(kept.linePosition?.offset ?? -1, 0.4, accuracy: 0.0001)
+    }
+
+    /// Старый payload без ended декодируется; ended: true сохраняется.
+    func testScrollPositionPayloadEndedIsOptional() {
+        let legacy: [String: Any] = [
+            "line": 3,
+            "offset": 0.2,
+            "fraction": 0.4
+        ]
+        let decoded = PreviewBridgeScript.decode(ScrollPositionPayload.self, from: legacy)
+        XCTAssertNotNil(decoded)
+        XCTAssertNil(decoded?.ended)
+
+        let ended: [String: Any] = [
+            "line": 3,
+            "offset": 0.2,
+            "fraction": 0.4,
+            "ended": true
+        ]
+        let endedPayload = PreviewBridgeScript.decode(ScrollPositionPayload.self, from: ended)
+        XCTAssertEqual(endedPayload?.ended, true)
+    }
+
+    /// Тело одного CSS-правила по селектору. Совпадение — по началу селектора до `{`.
+    private func cssRule(named selector: String, in html: String) -> String {
+        guard let start = html.range(of: selector + " {") else { return "" }
+        let tail = html[start.upperBound...]
+        guard let end = tail.range(of: "}") else { return "" }
+        return String(tail[..<end.lowerBound])
+    }
 }

@@ -49,48 +49,47 @@ final class FileWatcherService {
             // G-DIAG: событие — публичная метрика; путь приватный.
             Diag.watcher.debug("Событие watch: write=\(isWrite, privacy: .public), rename=\(isRename, privacy: .public), delete=\(isDelete, privacy: .public)")
 
-            // Этап 1: .delete — всегда удаление (дескриптор мёртв).
+            // 1. Подавление собственного эха (автосейв DuckMD):
+            // На APFS атомарная запись (write to temp + rename) доставляет .delete или .rename
+            // к старому файловому дескриптору. Если активно окно подавления собственной записи —
+            // это наше собственное сохранение: игнорируем событие, перезапускаем вотчер при смене inode
+            // и выходим без вызова onDeleted или onChanged.
+            if self.shouldSuppressOwnEvent?() == true {
+                Diag.watcher.debug("Подавлено эхо собственной записи (write=\(isWrite, privacy: .public), rename=\(isRename, privacy: .public), delete=\(isDelete, privacy: .public))")
+                if isDelete || isRename {
+                    self.restartWatch()
+                }
+                return
+            }
+
+            // 2. Внешнее событие удаления / атомарной перезаписи (.delete):
             if isDelete {
-                DispatchQueue.main.async { [weak self] in self?.onDeleted?() }
+                // Если файл всё ещё существует на диске — это внешняя атомарная перезапись (например, сторонний редактор)
+                let stillExists = FileManager.default.fileExists(atPath: url.path)
+                if stillExists {
+                    Diag.watcher.debug("Внешняя атомарная запись (delete-событие, но файл существует на диске)")
+                    DispatchQueue.main.async { [weak self] in self?.onChanged?() }
+                } else {
+                    DispatchQueue.main.async { [weak self] in self?.onDeleted?() }
+                }
                 self.restartWatch()
                 return
             }
-            // Этап 1: .rename без .delete — два подслучая:
-            // - атомарная запись (файл на месте) → изменение + перезапуск источника;
-            // - перемещение/переименование наружу (файла нет) → удаление.
+
+            // 3. Внешнее событие перемещения / переименования (.rename):
             if isRename {
                 let stillExists = FileManager.default.fileExists(atPath: url.path)
                 if !stillExists {
                     DispatchQueue.main.async { [weak self] in self?.onDeleted?() }
-                } else if isWrite {
-                    // Атомарная внешняя запись даёт write+rename парой;
-                    // эхо собственной записи подавляем токеном.
-                    if self.shouldSuppressOwnEvent?() == true {
-                        Diag.watcher.debug("Подавлено эхо собственной записи (rename+write)")
-                    } else {
-                        DispatchQueue.main.async { [weak self] in self?.onChanged?() }
-                    }
                 } else {
-                    // Чистый rename при живом файле (редкий кейс) — тоже изменение,
-                    // если не эхо собственной атомарной записи.
-                    if self.shouldSuppressOwnEvent?() == true {
-                        Diag.watcher.debug("Подавлено эхо собственной записи (rename)")
-                    } else {
-                        DispatchQueue.main.async { [weak self] in self?.onChanged?() }
-                    }
+                    DispatchQueue.main.async { [weak self] in self?.onChanged?() }
                 }
-                // После .rename файловый дескриптор мёртв: пересоздаём
-                // источник, иначе наблюдение прекращается навсегда.
                 self.restartWatch()
                 return
             }
-            // Чистый .write: подавляем эхо собственных записей токеном
-            // (вместо сравнения текста с гонкой).
+
+            // 4. Внешнее событие обычной записи (.write):
             if isWrite {
-                if self.shouldSuppressOwnEvent?() == true {
-                    Diag.watcher.debug("Подавлено эхо собственной записи (write)")
-                    return
-                }
                 DispatchQueue.main.async { [weak self] in self?.onChanged?() }
             }
         }

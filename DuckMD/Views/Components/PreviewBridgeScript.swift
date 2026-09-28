@@ -59,12 +59,45 @@ struct CheckboxTogglePayload: Codable {
     let checked: Bool
 }
 
-/// Данные позиции скролла для центрированного синхронного скролла
+/// Данные позиции скролла для центрированного синхронного скролла.
+/// `ended == true` — конец пользовательского жеста, не семпл позиции.
+/// Поле опционально: старые payload без него декодируются как nil.
 struct ScrollPositionPayload: Codable {
     let line: Int
     let nextLine: Int?
     let offset: Double
     let fraction: Double
+    var ended: Bool? = nil
+
+    private enum CodingKeys: String, CodingKey {
+        case line, nextLine, offset, fraction, ended
+    }
+
+    init(line: Int, nextLine: Int?, offset: Double, fraction: Double, ended: Bool? = nil) {
+        self.line = line
+        self.nextLine = nextLine
+        self.offset = offset
+        self.fraction = fraction
+        self.ended = ended
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        line = try container.decode(Int.self, forKey: .line)
+        nextLine = try container.decodeIfPresent(Int.self, forKey: .nextLine)
+        offset = try container.decode(Double.self, forKey: .offset)
+        fraction = try container.decode(Double.self, forKey: .fraction)
+        ended = try container.decodeIfPresent(Bool.self, forKey: .ended)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(line, forKey: .line)
+        try container.encodeIfPresent(nextLine, forKey: .nextLine)
+        try container.encode(offset, forKey: .offset)
+        try container.encode(fraction, forKey: .fraction)
+        try container.encodeIfPresent(ended, forKey: .ended)
+    }
 }
 
 // MARK: - Bridge Script
@@ -76,7 +109,6 @@ enum PreviewBridgeScript {
     /// слушатели input/click/scroll. Контекст контракта — PreviewMessageHandlerName.
     static let source: String = """
         var _isProgrammatic = false;
-        var _programmaticTimer = null;
         var _blocksCache = [];
         function _rebuildBlocksCache() {
             var all = document.querySelectorAll('[data-source-line]');
@@ -156,6 +188,82 @@ enum PreviewBridgeScript {
         window.addEventListener('load', _rebuildBlocksCache);
         setTimeout(_rebuildBlocksCache, 150);
 
+        function _postScrollSample(ended) {
+            var maxScroll = document.body.scrollHeight - window.innerHeight;
+            if (maxScroll <= 0) return;
+            var scrollY = window.scrollY || window.pageYOffset;
+            var fraction = scrollY / maxScroll;
+            var roundedFraction = Math.round(fraction * 10000) / 10000;
+
+            if (scrollY <= 4) {
+                _lastFraction = 0;
+                window.webkit.messageHandlers.\(PreviewMessageHandlerName.scrollHandler.rawValue).postMessage({
+                    line: 1,
+                    offset: 0,
+                    fraction: 0,
+                    ended: ended ? true : false
+                });
+                return;
+            }
+
+            if (scrollY >= maxScroll - 4) {
+                _lastFraction = 1;
+                window.webkit.messageHandlers.\(PreviewMessageHandlerName.scrollHandler.rawValue).postMessage({
+                    line: 999999,
+                    offset: 1,
+                    fraction: 1,
+                    ended: ended ? true : false
+                });
+                return;
+            }
+
+            if (_blocksCache.length === 0) {
+                _rebuildBlocksCache();
+            }
+
+            var centerY = scrollY + (window.innerHeight / 2);
+            var pair = _findBlockByScroll(centerY);
+            var targetBlock = pair ? pair.target : null;
+            var nextBlock = pair ? pair.next : null;
+
+            var line = 1;
+            var offset = 0;
+            if (targetBlock) {
+                line = targetBlock.line;
+                if (nextBlock && nextBlock !== targetBlock && nextBlock.top > targetBlock.top) {
+                    var totalDistance = Math.max(1, nextBlock.top - targetBlock.top);
+                    offset = (centerY - targetBlock.top) / totalDistance;
+                } else {
+                    offset = (centerY - targetBlock.top) / Math.max(1, targetBlock.height);
+                }
+                offset = Math.max(0, Math.min(offset, 1));
+            }
+
+            _lastFraction = roundedFraction;
+            var nextLineNum = (nextBlock && nextBlock !== targetBlock) ? nextBlock.line : null;
+            window.webkit.messageHandlers.\(PreviewMessageHandlerName.scrollHandler.rawValue).postMessage({
+                line: line,
+                nextLine: (nextLineNum && !isNaN(nextLineNum)) ? nextLineNum : null,
+                offset: Math.round(offset * 1000) / 1000,
+                fraction: roundedFraction,
+                ended: ended ? true : false
+            });
+        }
+
+        function _scrollProgrammatic(y) {
+            var before = window.scrollY || window.pageYOffset;
+            _isProgrammatic = true;
+            if (y === 0) {
+                window.scrollTo(0, 0);
+            } else {
+                window.scrollTo(0, y);
+            }
+            var after = window.scrollY || window.pageYOffset;
+            if (after === before) {
+                _isProgrammatic = false;
+            }
+        }
+
         window.setScrollbarVisible = function(visible) {
             if (visible) {
                 document.body.classList.remove('hide-scrollbar');
@@ -176,17 +284,11 @@ enum PreviewBridgeScript {
             // Граничные положения: жесткая доводка до краев
             if (fraction !== null && fraction !== undefined) {
                 if (fraction <= 0.005) {
-                    _isProgrammatic = true;
-                    if (_programmaticTimer) clearTimeout(_programmaticTimer);
-                    window.scrollTo(0, 0);
-                    _programmaticTimer = setTimeout(function() { _isProgrammatic = false; }, 40);
+                    _scrollProgrammatic(0);
                     return;
                 }
                 if (fraction >= 0.995) {
-                    _isProgrammatic = true;
-                    if (_programmaticTimer) clearTimeout(_programmaticTimer);
-                    window.scrollTo(0, maxScroll);
-                    _programmaticTimer = setTimeout(function() { _isProgrammatic = false; }, 40);
+                    _scrollProgrammatic(maxScroll);
                     return;
                 }
             }
@@ -210,15 +312,9 @@ enum PreviewBridgeScript {
                 }
 
                 targetY = Math.max(0, Math.min(targetY, maxScroll));
-                _isProgrammatic = true;
-                if (_programmaticTimer) clearTimeout(_programmaticTimer);
-                window.scrollTo(0, targetY);
-                _programmaticTimer = setTimeout(function() { _isProgrammatic = false; }, 150);
+                _scrollProgrammatic(targetY);
             } else if (fraction !== null && fraction !== undefined) {
-                _isProgrammatic = true;
-                if (_programmaticTimer) clearTimeout(_programmaticTimer);
-                window.scrollTo(0, fraction * maxScroll);
-                _programmaticTimer = setTimeout(function() { _isProgrammatic = false; }, 150);
+                _scrollProgrammatic(fraction * maxScroll);
             }
         };
 
@@ -226,12 +322,7 @@ enum PreviewBridgeScript {
         window.scrollToProgrammatic = function(fraction) {
             var maxScroll = document.body.scrollHeight - window.innerHeight;
             if (maxScroll <= 0) return;
-            _isProgrammatic = true;
-            if (_programmaticTimer) clearTimeout(_programmaticTimer);
-            window.scrollTo(0, fraction * maxScroll);
-            _programmaticTimer = setTimeout(function() {
-                _isProgrammatic = false;
-            }, 80);
+            _scrollProgrammatic(fraction * maxScroll);
         };
 
         // Вызывается из Swift — подсвечивает элемент по строке с дебаунсом
@@ -352,70 +443,21 @@ enum PreviewBridgeScript {
         // Слушаем пользовательский скролл через requestAnimationFrame (синхронно с дисплеем)
         var _rafPending = false;
         window.addEventListener('scroll', function() {
-            if (_isProgrammatic) return;
             if (_rafPending) return;
             _rafPending = true;
             requestAnimationFrame(function() {
                 _rafPending = false;
-                var maxScroll = document.body.scrollHeight - window.innerHeight;
-                if (maxScroll <= 0) return;
-                var scrollY = window.scrollY || window.pageYOffset;
-                var fraction = scrollY / maxScroll;
-                var roundedFraction = Math.round(fraction * 10000) / 10000;
-
-                // Верхняя граница (жесткая доводка)
-                if (scrollY <= 4) {
-                    _lastFraction = 0;
-                    window.webkit.messageHandlers.\(PreviewMessageHandlerName.scrollHandler.rawValue).postMessage({
-                        line: 1,
-                        offset: 0,
-                        fraction: 0
-                    });
-                    return;
-                }
-
-                // Нижняя граница (жесткая доводка)
-                if (scrollY >= maxScroll - 4) {
-                    _lastFraction = 1;
-                    window.webkit.messageHandlers.\(PreviewMessageHandlerName.scrollHandler.rawValue).postMessage({
-                        line: 999999,
-                        offset: 1,
-                        fraction: 1
-                    });
-                    return;
-                }
-
-                if (_blocksCache.length === 0) {
-                    _rebuildBlocksCache();
-                }
-
-                var centerY = scrollY + (window.innerHeight / 2);
-                var pair = _findBlockByScroll(centerY);
-                var targetBlock = pair ? pair.target : null;
-                var nextBlock = pair ? pair.next : null;
-
-                var line = 1;
-                var offset = 0;
-                if (targetBlock) {
-                    line = targetBlock.line;
-                    if (nextBlock && nextBlock !== targetBlock && nextBlock.top > targetBlock.top) {
-                        var totalDistance = Math.max(1, nextBlock.top - targetBlock.top);
-                        offset = (centerY - targetBlock.top) / totalDistance;
-                    } else {
-                        offset = (centerY - targetBlock.top) / Math.max(1, targetBlock.height);
-                    }
-                    offset = Math.max(0, Math.min(offset, 1));
-                }
-
-                _lastFraction = roundedFraction;
-                var nextLineNum = (nextBlock && nextBlock !== targetBlock) ? nextBlock.line : null;
-                window.webkit.messageHandlers.\(PreviewMessageHandlerName.scrollHandler.rawValue).postMessage({
-                    line: line,
-                    nextLine: (nextLineNum && !isNaN(nextLineNum)) ? nextLineNum : null,
-                    offset: Math.round(offset * 1000) / 1000,
-                    fraction: roundedFraction
-                });
+                if (_isProgrammatic) return;
+                _postScrollSample(false);
             });
+        });
+
+        window.addEventListener('scrollend', function() {
+            if (_isProgrammatic) {
+                _isProgrammatic = false;
+                return;
+            }
+            _postScrollSample(true);
         });
 
         // Блур активного элемента при потере фокуса окном webview

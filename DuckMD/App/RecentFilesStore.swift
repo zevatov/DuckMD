@@ -45,12 +45,22 @@ final class RecentFilesStore: ObservableObject {
     /// UserDefaults-ключ персиста сортировки хаба (SPEC R-HUB-8): rawValue SortOption.
     static let sortOptionDefaultsKey = "DuckMD.sortOption"
 
-    @Published var files: [RecentFile] = []
-    @Published var searchText: String = ""
+    @Published var files: [RecentFile] = [] {
+        didSet { invalidateCache() }
+    }
+    @Published var searchText: String = "" {
+        didSet { invalidateCache() }
+    }
     /// SPEC R-HUB-8: выбор сортировки переживает перезапуск — загрузка в init, запись в didSet.
     @Published var sortOption: SortOption {
-        didSet { persistSortOption() }
+        didSet {
+            persistSortOption()
+            invalidateCache()
+        }
     }
+
+    /// Кеш отфильтрованных и отсортированных файлов для производительности при большом количестве недавних файлов
+    private var cachedFilteredSorted: [RecentFile]?
 
     private let fileManager = FileManager.default
     private var saveURL: URL {
@@ -298,12 +308,16 @@ final class RecentFilesStore: ObservableObject {
     }
     
     var filteredAndSortedFiles: [RecentFile] {
+        if let cached = cachedFilteredSorted {
+            return cached
+        }
+
         var result = files.filter { $0.exists }
-        
+
         if !searchText.isEmpty {
             result = result.filter { $0.title.localizedCaseInsensitiveContains(searchText) || $0.preview.localizedCaseInsensitiveContains(searchText) }
         }
-        
+
         switch sortOption {
         case .lastOpened:
             result.sort { $0.lastOpened > $1.lastOpened }
@@ -314,8 +328,13 @@ final class RecentFilesStore: ObservableObject {
         case .size:
             result.sort { $0.fileSize > $1.fileSize }
         }
-        
+
+        cachedFilteredSorted = result
         return result
+    }
+
+    private func invalidateCache() {
+        cachedFilteredSorted = nil
     }
 
     // MARK: - Персист сортировки (SPEC R-HUB-8)

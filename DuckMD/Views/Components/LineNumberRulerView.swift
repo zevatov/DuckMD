@@ -6,6 +6,8 @@ import AppKit
 /// Вынесен из CodeEditorView.swift (R8).
 final class LineNumberRulerView: NSRulerView {
     private weak var textView: NSTextView?
+    /// Быстрый O(log N) кэш переносов строк из координатора редактора
+    weak var lineCache: LineIndexCache?
 
     init(textView: NSTextView) {
         self.textView = textView
@@ -55,8 +57,7 @@ final class LineNumberRulerView: NSRulerView {
             .foregroundColor: NSColor.secondaryLabelColor
         ]
 
-        let text = textView.string
-        let lineCount = max(1, text.components(separatedBy: "\n").count)
+        let lineCount = max(1, lineCache?.lineStarts.count ?? 1)
         let sampleNumber = String(repeating: "8", count: max("\(lineCount)".count, 2)) as NSString
         let sampleSize = sampleNumber.size(withAttributes: attrs)
         let neededThickness = max(36, ceil(sampleSize.width + 16))
@@ -79,15 +80,9 @@ final class LineNumberRulerView: NSRulerView {
         let glyphRange = layoutManager.glyphRange(forBoundingRect: visibleRect, in: textContainer)
         let characterRange = layoutManager.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
 
-        // Подсчитаем физические строки до начала видимого диапазона
-        var lineNumber = 1
-        let textNSString = text as NSString
-        let prefix = textNSString.substring(to: characterRange.location)
-        for codeUnit in prefix.utf16 {
-            if codeUnit == 10 { // '\n'
-                lineNumber += 1
-            }
-        }
+        // Быстрое определение первой видимой строки за O(log N) через LineIndexCache без аллокаций
+        let textNSString = textView.string as NSString
+        var lineNumber = lineCache?.line(for: characterRange.location) ?? 1
 
         let inset = textView.textContainerInset.height
 
@@ -124,7 +119,7 @@ final class LineNumberRulerView: NSRulerView {
         }
 
         // Если текст пустой или заканчивается на перевод строки, отрисовываем пустую строку в самом конце
-        if text.isEmpty {
+        if textNSString.length == 0 {
             let extraRect = layoutManager.extraLineFragmentRect
             let drawY = extraRect.origin.y + inset - visibleRect.origin.y
             if drawY >= currentTopInset {
@@ -134,7 +129,7 @@ final class LineNumberRulerView: NSRulerView {
                 let y = drawY + (extraRect.height - labelSize.height) / 2
                 label.draw(at: NSPoint(x: x, y: y), withAttributes: attrs)
             }
-        } else if text.hasSuffix("\n") && charIndex >= text.utf16.count {
+        } else if textNSString.length > 0 && textNSString.character(at: textNSString.length - 1) == 10 && charIndex >= textNSString.length {
             let extraRect = layoutManager.extraLineFragmentRect
             let drawY = extraRect.origin.y + inset - visibleRect.origin.y
             if drawY >= currentTopInset {

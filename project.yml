@@ -8,7 +8,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5"
-    MARKETING_VERSION: "0.6.15"
+    MARKETING_VERSION: "0.6.18"
     CURRENT_PROJECT_VERSION: "10"
     DEVELOPMENT_LANGUAGE: ru
 packages:

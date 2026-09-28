@@ -58,6 +58,9 @@ struct CodeEditorView: NSViewRepresentable {
     var onScrollFractionChanged: ((CGFloat) -> Void)? = nil
     /// Callback: передаёт строку, смещение и общую дробь при пользовательской прокрутке
     var onScrollPositionChanged: ((Int, CGFloat, CGFloat) -> Void)? = nil
+    /// Конец пользовательского жеста (палец, инерция, дискретное колесо, живой скроллбар).
+    /// Не вызывается для программного scroll(to:).
+    var onUserScrollEnded: (() -> Void)? = nil
     /// Callback: передаёт 1-индексированный номер строки и колонку (если таблица) при изменении позиции курсора
     var onCursorLineChanged: ((Int, Int?) -> Void)? = nil
     /// Этап 1.3: внешний текст не применён, потому что пользователь редактирует
@@ -92,6 +95,7 @@ struct CodeEditorView: NSViewRepresentable {
 
         // Счётчик строк (ruler)
         let rulerView = LineNumberRulerView(textView: textView)
+        rulerView.lineCache = context.coordinator.lineCache
         scrollView.hasVerticalRuler = true
         scrollView.verticalRulerView = rulerView
         scrollView.rulersVisible = SettingsStore.shared.showLineNumbers
@@ -105,7 +109,17 @@ struct CodeEditorView: NSViewRepresentable {
             name: NSView.boundsDidChangeNotification,
             object: scrollView.contentView
         )
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.scrollViewDidEndLiveScroll(_:)),
+            name: NSScrollView.didEndLiveScrollNotification,
+            object: scrollView
+        )
         context.coordinator.scrollView = scrollView
+        context.coordinator.textView = textView
+        textView.onUserScrollPhase = { [weak coordinator = context.coordinator] event in
+            coordinator?.handleScrollWheelPhase(event)
+        }
 
         // Обновлять ruler при изменении текста
         NotificationCenter.default.addObserver(
@@ -139,6 +153,7 @@ struct CodeEditorView: NSViewRepresentable {
                 let selected = textView.selectedRange()
                 textView.string = text
                 textView.setSelectedRange(NSRange(location: min(selected.location, textView.string.count), length: 0))
+                context.coordinator.lineCache.update(text: text)
                 textView.highlight()
             }
         }
@@ -169,15 +184,7 @@ struct CodeEditorView: NSViewRepresentable {
                 let maxScroll = contentHeight - visibleHeight
                 let targetY = min(max(0, centeredY), max(0, maxScroll))
                 
-                context.coordinator.isProgrammaticScroll = true
-                context.coordinator.programmaticScrollTimer?.invalidate()
-                let baseX = (scrollView.contentView as? LockedHorizontalClipView)?.baseOriginX ?? 0
-                scrollView.contentView.scroll(to: NSPoint(x: baseX, y: targetY))
-                scrollView.reflectScrolledClipView(scrollView.contentView)
-                
-                context.coordinator.programmaticScrollTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak coordinator = context.coordinator] _ in
-                    coordinator?.isProgrammaticScroll = false
-                }
+                context.coordinator.performProgrammaticScroll(in: scrollView, toY: targetY)
             } else {
                 textView.scrollRangeToVisible(NSRange(location: index, length: 0))
             }
@@ -217,52 +224,11 @@ struct CodeEditorView: NSViewRepresentable {
     static func dismantleNSView(_ nsView: NSScrollView, coordinator: Coordinator) {
         let center = NotificationCenter.default
         center.removeObserver(coordinator, name: NSView.boundsDidChangeNotification, object: nil)
+        center.removeObserver(coordinator, name: NSScrollView.didEndLiveScrollNotification, object: nil)
         center.removeObserver(coordinator, name: NSTextStorage.didProcessEditingNotification, object: nil)
         coordinator.cancelPendingWork()
     }
 
-/// Быстрый кэш переносов строк: бинарный поиск строки за O(log K) и поиск смещения за O(1)
-final class LineIndexCache {
-    private(set) var lineStarts: [Int] = [0]
-    private var lastLength: Int = -1
-
-    func update(text: String) {
-        let ns = text as NSString
-        let len = ns.length
-        if len == lastLength && !lineStarts.isEmpty { return }
-        lastLength = len
-        var starts: [Int] = [0]
-        for i in 0..<len {
-            if ns.character(at: i) == 10 { // \n
-                starts.append(i + 1)
-            }
-        }
-        lineStarts = starts
-    }
-
-    func line(for charIndex: Int) -> Int {
-        var low = 0
-        var high = lineStarts.count - 1
-        var result = 1
-        while low <= high {
-            let mid = (low + high) / 2
-            if lineStarts[mid] <= charIndex {
-                result = mid + 1
-                low = mid + 1
-            } else {
-                high = mid - 1
-            }
-        }
-        return result
-    }
-
-    func characterIndex(for line: Int) -> Int {
-        let idx = line - 1
-        if idx <= 0 { return 0 }
-        if idx < lineStarts.count { return lineStarts[idx] }
-        return lineStarts.last ?? 0
-    }
-}
 
     // MARK: - Coordinator
 
@@ -270,9 +236,9 @@ final class LineIndexCache {
         var parent: CodeEditorView
         var formatter: MarkdownAutoFormatter?
         weak var scrollView: NSScrollView?
+        weak var textView: MarkdownTextView?
         weak var rulerView: LineNumberRulerView?
         private var highlightWork: DispatchWorkItem?
-        var programmaticScrollTimer: Timer?
         var lineCache = LineIndexCache()
         /// Последняя применённая входящая дробь (для дедупликации updateNSView)
         var lastAppliedFraction: CGFloat = 0
@@ -296,7 +262,7 @@ final class LineIndexCache {
         /// Отмена отложенных работ (вызывается из dismantleNSView при демонтаже view)
         func cancelPendingWork() {
             highlightWork?.cancel()
-            programmaticScrollTimer?.invalidate()
+            textView?.onUserScrollPhase = nil
         }
 
         func textDidChange(_ notification: Notification) {
@@ -354,6 +320,39 @@ final class LineIndexCache {
             rulerView?.needsDisplay = true
         }
 
+        /// Программный скролл: флаг true строго вокруг scroll(to:)/reflect, чтобы
+        /// синхронный boundsDidChange не публиковался. Сброс сразу после эха.
+        func performProgrammaticScroll(in scrollView: NSScrollView, toY: CGFloat) {
+            isProgrammaticScroll = true
+            let baseX = (scrollView.contentView as? LockedHorizontalClipView)?.baseOriginX ?? 0
+            scrollView.contentView.scroll(to: NSPoint(x: baseX, y: toY))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+            isProgrammaticScroll = false
+        }
+
+        /// Конец пользовательского жеста. didEndLiveScroll во время программного
+        /// флага — отложенное эхо, не жест.
+        func noteUserScrollEnded() {
+            guard !isProgrammaticScroll else { return }
+            parent.onUserScrollEnded?()
+        }
+
+        func handleScrollWheelPhase(_ event: NSEvent) {
+            let phase = event.phase
+            let momentum = event.momentumPhase
+            let fingerReleased = phase == .ended && momentum == .none
+            let momentumEnded = momentum == .ended
+            let cancelled = phase == .cancelled
+            let discreteWheel = phase == .none && momentum == .none && event.scrollingDeltaY != 0
+            if fingerReleased || momentumEnded || cancelled || discreteWheel {
+                noteUserScrollEnded()
+            }
+        }
+
+        @objc func scrollViewDidEndLiveScroll(_ notification: Notification) {
+            noteUserScrollEnded()
+        }
+
         @objc func scrollViewDidScroll(_ notification: Notification) {
             // Обновляем ruler при скролле
             rulerView?.needsDisplay = true
@@ -396,7 +395,6 @@ final class LineIndexCache {
             let glyphIndex = layoutManager.glyphIndex(for: pointInContainer, in: textContainer)
             let charIndex = layoutManager.characterIndexForGlyph(at: glyphIndex)
 
-            lineCache.update(text: textView.string)
             let safeChar = min(charIndex, (textView.string as NSString).length)
             let lineNum = lineCache.line(for: safeChar)
 
@@ -430,7 +428,6 @@ final class LineIndexCache {
             } else if fraction >= 0.995 {
                 targetY = maxScroll
             } else {
-                lineCache.update(text: textView.string)
                 let charIndex1 = lineCache.characterIndex(for: line)
                 let glyphRange1 = layoutManager.glyphRange(forCharacterRange: NSRange(location: charIndex1, length: 0), actualCharacterRange: nil)
                 let lineRect1 = layoutManager.boundingRect(forGlyphRange: glyphRange1, in: textContainer)
@@ -454,16 +451,7 @@ final class LineIndexCache {
             let currentY = scrollView.contentView.bounds.origin.y
             guard abs(currentY - targetY) > 0.5 else { return }
 
-            isProgrammaticScroll = true
-            programmaticScrollTimer?.invalidate()
-
-            let baseX = (scrollView.contentView as? LockedHorizontalClipView)?.baseOriginX ?? 0
-            scrollView.contentView.scroll(to: NSPoint(x: baseX, y: targetY))
-            scrollView.reflectScrolledClipView(scrollView.contentView)
-
-            programmaticScrollTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: false) { [weak self] _ in
-                self?.isProgrammaticScroll = false
-            }
+            performProgrammaticScroll(in: scrollView, toY: targetY)
         }
 
         /// Программный скролл от превью — с защитой от echo через isProgrammaticScroll
@@ -476,17 +464,8 @@ final class LineIndexCache {
             
             let currentY = scrollView.contentView.bounds.origin.y
             guard abs(currentY - y) > 0.5 else { return }
-            
-            isProgrammaticScroll = true
-            programmaticScrollTimer?.invalidate()
-            
-            let baseX = (scrollView.contentView as? LockedHorizontalClipView)?.baseOriginX ?? 0
-            scrollView.contentView.scroll(to: NSPoint(x: baseX, y: y))
-            scrollView.reflectScrolledClipView(scrollView.contentView)
-            
-            programmaticScrollTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: false) { [weak self] _ in
-                self?.isProgrammaticScroll = false
-            }
+
+            performProgrammaticScroll(in: scrollView, toY: y)
         }
     }
 
@@ -514,6 +493,9 @@ final class LineIndexCache {
 
 /// Подкласс NSTextView с подсветкой Markdown и кастомным шрифтом/отступами.
 final class MarkdownTextView: NSTextView {
+    /// Фаза scrollWheel после super: координатор решает, кончился ли жест.
+    var onUserScrollPhase: ((NSEvent) -> Void)?
+
     /// Диапазон строк для подсветки активного логического блока
     var highlightedLineRange: ClosedRange<Int>? = nil {
         didSet {
@@ -588,6 +570,7 @@ final class MarkdownTextView: NSTextView {
             return
         }
         super.scrollWheel(with: event)
+        onUserScrollPhase?(event)
     }
 
     override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {

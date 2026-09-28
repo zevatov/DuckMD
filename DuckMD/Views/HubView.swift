@@ -11,6 +11,8 @@ struct HubView: View {
     @State private var isConverting = false
     @State private var errorMessage: String? = nil
     @State private var showErrorAlert = false
+    /// Состояние targeted у существующего onDrop хаба.
+    @State private var isTargeted = false
 
     private let columns = [
         GridItem(.adaptive(minimum: 220, maximum: 320), spacing: 16)
@@ -18,87 +20,55 @@ struct HubView: View {
 
     var body: some View {
         ScrollView {
+            if store.filteredAndSortedFiles.isEmpty {
                 VStack(alignment: .leading, spacing: 20) {
-                    // Раздел действий (отцентрован сверху посередине)
-                    HStack {
-                        Spacer(minLength: 0)
-                        LazyVGrid(columns: [
-                            GridItem(.flexible(minimum: 140, maximum: 220), spacing: 14),
-                            GridItem(.flexible(minimum: 140, maximum: 220), spacing: 14),
-                            GridItem(.flexible(minimum: 140, maximum: 220), spacing: 14)
-                        ], spacing: 14) {
-                            HubActionCard(
-                                icon: "doc.badge.plus",
-                                title: "Новый документ",
-                                isAccent: true
-                            ) {
-                                appState.createNewDocument()
-                            }
-
-                            HubActionCard(
-                                icon: "folder.badge.plus",
-                                title: "Открыть существующий",
-                                isAccent: false
-                            ) {
-                                let panel = NSOpenPanel()
-                                panel.allowedContentTypes = [.markdownDoc, .markdownStandard, .plainText]
-                                panel.allowsMultipleSelection = false
-                                panel.canChooseDirectories = false
-                                panel.canChooseFiles = true
-                                if panel.runModal() == .OK, let url = panel.url {
-                                    appState.openDocument(at: url)
-                                }
-                            }
-
-                            HubActionCard(
-                                icon: "arrow.triangle.2.circlepath.doc.on.clipboard",
-                                title: "Конвертировать в MD",
-                                isAccent: false
-                            ) {
-                                convertAndOpenDocument()
-                            }
-                        }
-                        .frame(maxWidth: 720)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.top, 6)
-
+                    hubActionRow
                     Divider()
                         .padding(.vertical, 4)
-
-                    // Шапка списка недавних файлов
                     recentFilesHeader
-
-                    // Список недавних файлов
-                    if store.filteredAndSortedFiles.isEmpty {
-                        emptyRecentPlaceholder
-                    } else {
-                        LazyVGrid(columns: columns, spacing: 14) {
-                            ForEach(store.filteredAndSortedFiles) { file in
-                                HubCardView(
-                                    file: file,
-                                    onOpen: { openRecentFile(file) },
-                                    onRemove: { store.remove(id: file.id) }
-                                )
-                            }
+                    emptyRecentPlaceholder
+                }
+                .padding(20)
+            } else {
+                // Единственный ребёнок ScrollView: обёртка VStack/LazyVStack
+                // заставляет сетку измерить все строки сразу.
+                LazyVGrid(columns: columns, spacing: 14) {
+                    Section {
+                        ForEach(store.filteredAndSortedFiles) { file in
+                            HubCardView(
+                                file: file,
+                                onOpen: { openRecentFile(file) },
+                                onRemove: { store.remove(id: file.id) }
+                            )
                         }
+                    } header: {
+                        VStack(alignment: .leading, spacing: 20) {
+                            hubActionRow
+                            Divider()
+                                .padding(.vertical, 4)
+                            recentFilesHeader
+                        }
+                        // spacing сетки 14; раньше зазор шапка→карточки был 20.
+                        .padding(.bottom, 6)
                     }
                 }
                 .padding(20)
             }
-            .background(VisualEffectView(material: .windowBackground, blendingMode: .behindWindow))
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
             .navigationTitle("")
             .navigationSubtitle("")
             .toolbarBackground(.hidden, for: .windowToolbar)
             .toolbar {
                 ToolbarItem(placement: .navigation) {
-                    HStack(spacing: 8) {
-                        DuckLogo(size: 20)
+                    HStack(spacing: 7) {
+                        DuckLogo(size: 18)
                         Text("DuckMD")
                             .font(.system(size: 13, weight: .bold))
                             .foregroundColor(.primary)
                     }
-                    .padding(.leading, 6)
+                    .padding(.leading, 4)
+                    .padding(.trailing, 12)
                 }
 
                 ToolbarItem(placement: .principal) {
@@ -118,9 +88,10 @@ struct HubView: View {
                 }
             }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+        .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
             handleDrop(providers: providers)
         }
+        .fileDropOverlay(isPresented: isTargeted, mode: .open)
         .onAppear {
             store.load()
         }
@@ -154,6 +125,52 @@ struct HubView: View {
     }
 
     // MARK: - Headers & Placeholders
+
+    /// Три действия хаба. Всегда в зоне видимости, не в ленивом списке карточек.
+    private var hubActionRow: some View {
+        HStack {
+            Spacer(minLength: 0)
+            LazyVGrid(columns: [
+                GridItem(.flexible(minimum: 140, maximum: 220), spacing: 14),
+                GridItem(.flexible(minimum: 140, maximum: 220), spacing: 14),
+                GridItem(.flexible(minimum: 140, maximum: 220), spacing: 14)
+            ], spacing: 14) {
+                HubActionCard(
+                    icon: "doc.badge.plus",
+                    title: "Новый документ",
+                    isAccent: true
+                ) {
+                    appState.createNewDocument()
+                }
+
+                HubActionCard(
+                    icon: "folder.badge.plus",
+                    title: "Открыть существующий",
+                    isAccent: false
+                ) {
+                    let panel = NSOpenPanel()
+                    panel.allowedContentTypes = [.markdownDoc, .markdownStandard, .plainText]
+                    panel.allowsMultipleSelection = false
+                    panel.canChooseDirectories = false
+                    panel.canChooseFiles = true
+                    if panel.runModal() == .OK, let url = panel.url {
+                        appState.openDocument(at: url)
+                    }
+                }
+
+                HubActionCard(
+                    icon: "arrow.triangle.2.circlepath.doc.on.clipboard",
+                    title: "Конвертировать в MD",
+                    isAccent: false
+                ) {
+                    convertAndOpenDocument()
+                }
+            }
+            .frame(maxWidth: 720)
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 6)
+    }
 
     private var recentFilesHeader: some View {
         HStack {

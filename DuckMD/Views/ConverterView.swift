@@ -15,6 +15,8 @@ struct ConverterView: View {
     /// HubView.enqueueConversion): защита от дубликатов + processNext —
     /// мультидроп не теряет файлы при активной конвертации.
     @State private var dropQueue: [URL] = []
+    /// Состояние targeted у onDrop конвертера.
+    @State private var isTargeted = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -48,9 +50,10 @@ struct ConverterView: View {
                 startConversion()
             }
         }
-        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+        .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
             handleDrop(providers: providers)
         }
+        .fileDropOverlay(isPresented: isTargeted, mode: .convert)
     }
     
     private var headerView: some View {

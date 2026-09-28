@@ -14,12 +14,13 @@ struct SplitEditorView: View {
 
     @ObservedObject private var settings = SettingsStore.shared
     
-    /// Флаг перетаскивания разделителя панелей
-    @State private var isDraggingSplitter = false
+    /// Флаг перетаскивания разделителя панелей.
+    /// Снаружи — только запрет показа оверлея дропа документа.
+    @Binding var isDraggingSplitter: Bool
     /// Локальное отношение ширины во время drag (не триггерит ререндер внешних моделей)
     @State private var liveDragRatio: CGFloat? = nil
 
-    /// Источник ведущего скролла для полного устранения дребезга и циклического эхо
+    /// Владелец жеста скролла. Семпл публикует только он; сброс — по концу жеста, не по таймеру.
     enum ScrollLeader {
         case idle
         case editor
@@ -27,7 +28,6 @@ struct SplitEditorView: View {
         case thumb
     }
     @State private var scrollLeader: ScrollLeader = .idle
-    @State private var leaderResetTimer: Timer? = nil
 
     /// Состояние единого ползунка скролла
     @State private var unifiedScrollFraction: CGFloat = 0
@@ -48,20 +48,25 @@ struct SplitEditorView: View {
     @State private var activeLine: Int = 1
     /// Активная колонка для выделения ячейки
     @State private var activeCol: Int? = nil
+    /// Кэшированный активный диапазон строк для подсветки блока
+    @State private var cachedActiveBlockRange: ClosedRange<Int>? = 1...1
 
-    /// Активный логический блок Markdown для подсветки в редакторе кода
-    private var activeBlockRange: ClosedRange<Int>? {
-        guard activeLine >= 1 else { return nil }
+    private func updateActiveBlockRange(for line: Int) {
+        guard line >= 1 else {
+            cachedActiveBlockRange = nil
+            return
+        }
         if let block = document.parsedBlocks.first(where: {
             let start = $0.sourceLine ?? -1
             let end = $0.endLine ?? start
-            return activeLine >= start && activeLine <= end
+            return line >= start && line <= end
         }) {
-            let start = block.sourceLine ?? activeLine
+            let start = block.sourceLine ?? line
             let end = block.endLine ?? start
-            return start...end
+            cachedActiveBlockRange = start...end
+        } else {
+            cachedActiveBlockRange = line...line
         }
-        return activeLine...activeLine
     }
 
     var body: some View {
@@ -76,26 +81,39 @@ struct SplitEditorView: View {
                         scrollPosition: editorTargetPosition,
                         syncScroll: settings.syncScroll,
                         activeLine: activeLine,
-                        highlightedLineRange: activeBlockRange,
+                        highlightedLineRange: cachedActiveBlockRange,
                         onScrollFractionChanged: { fraction in
                             guard settings.syncScroll else { return }
-                            guard scrollLeader != .preview && scrollLeader != .thumb else { return }
-                            setLeader(.editor)
+                            guard scrollLeader == .idle || scrollLeader == .editor else { return }
+                            if scrollLeader == .idle {
+                                setLeader(.editor)
+                            }
+                            // Код → превью: только доля. Строка центрирует HTML-блок
+                            // другой высоты и даёт пинг-понг с обратным семплом.
+                            previewTargetPosition = nil
                             unifiedScrollFraction = fraction
                             previewTarget = fraction
                             notifyScrollActivity()
                         },
                         onScrollPositionChanged: { line, offset, fraction in
                             guard settings.syncScroll else { return }
-                            guard scrollLeader != .preview && scrollLeader != .thumb else { return }
-                            setLeader(.editor)
-                            previewTargetPosition = (line, offset, fraction)
-                            unifiedScrollFraction = fraction
-                            previewTarget = fraction
-                            notifyScrollActivity()
+                            guard scrollLeader == .editor else { return }
+                            let command = Self.previewScrollCommand(
+                                leader: .editor,
+                                fraction: fraction,
+                                linePosition: (line, offset, fraction)
+                            )
+                            previewTargetPosition = command.linePosition
+                        },
+                        onUserScrollEnded: {
+                            guard scrollLeader == .editor else { return }
+                            setLeader(.idle)
                         },
                         onCursorLineChanged: { line, col in
-                            activeLine = line
+                            if activeLine != line {
+                                activeLine = line
+                                updateActiveBlockRange(for: line)
+                            }
                             activeCol = col
                         },
                         onPendingExternalText: onPendingExternalText
@@ -157,26 +175,40 @@ struct SplitEditorView: View {
                             activeLine: activeLine,
                             activeCol: activeCol,
                             onScroll: settings.syncScroll ? { fraction in
-                                guard scrollLeader != .editor && scrollLeader != .thumb else { return }
-                                setLeader(.preview)
+                                guard scrollLeader == .idle || scrollLeader == .preview else { return }
+                                if scrollLeader == .idle {
+                                    setLeader(.preview)
+                                }
                                 unifiedScrollFraction = fraction
                                 editorTarget = fraction
                                 notifyScrollActivity()
                             } : nil,
                             onScrollPosition: settings.syncScroll ? { line, nextLine, offset, fraction in
-                                guard scrollLeader != .editor && scrollLeader != .thumb else { return }
-                                setLeader(.preview)
+                                guard scrollLeader == .idle || scrollLeader == .preview else { return }
+                                if scrollLeader == .idle {
+                                    setLeader(.preview)
+                                }
                                 unifiedScrollFraction = fraction
                                 editorTargetPosition = (line, nextLine, offset, fraction)
                                 editorTarget = fraction
                                 notifyScrollActivity()
                             } : nil,
+                            onScrollGestureEnded: settings.syncScroll ? {
+                                guard scrollLeader == .preview else { return }
+                                setLeader(.idle)
+                            } : nil,
                             onElementClicked: { line in
-                                activeLine = line
+                                if activeLine != line {
+                                    activeLine = line
+                                    updateActiveBlockRange(for: line)
+                                }
                                 activeCol = nil
                             },
                             onElementEdited: { line, newText in
-                                activeLine = line
+                                if activeLine != line {
+                                    activeLine = line
+                                    updateActiveBlockRange(for: line)
+                                }
                                 activeCol = nil
                                 if let block = document.parsedBlocks.first(where: { $0.sourceLine == line }),
                                    let endLine = block.endLine {
@@ -202,6 +234,12 @@ struct SplitEditorView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .coordinateSpace(name: "splitContainer")
+            .onAppear {
+                updateActiveBlockRange(for: activeLine)
+            }
+            .onChange(of: document.parsedBlocks.count) { _ in
+                updateActiveBlockRange(for: activeLine)
+            }
         }
     }
 
@@ -291,15 +329,24 @@ struct SplitEditorView: View {
 
     private func setLeader(_ leader: ScrollLeader) {
         scrollLeader = leader
-        leaderResetTimer?.invalidate()
-        let timeout: TimeInterval = (leader == .editor) ? 0.45 : 0.25
-        leaderResetTimer = Timer.scheduledTimer(withTimeInterval: timeout, repeats: false) { _ in
-            scrollLeader = .idle
+    }
+
+    /// Код → превью идёт только долей. Строковая позиция превью в этом режиме не используется.
+    static func previewScrollCommand(
+        leader: ScrollLeader,
+        fraction: CGFloat,
+        linePosition: (line: Int, offset: CGFloat, fraction: CGFloat)?
+    ) -> (fraction: CGFloat, linePosition: (line: Int, offset: CGFloat, fraction: CGFloat)?) {
+        guard leader == .editor else {
+            return (fraction, linePosition)
         }
+        return (fraction, nil)
     }
 
     private func notifyScrollActivity() {
-        isScrollActive = true
+        if !isScrollActive {
+            isScrollActive = true
+        }
         idleTimer?.invalidate()
         idleTimer = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: false) { _ in
             isScrollActive = false

@@ -22,6 +22,8 @@ struct WebPreviewView: NSViewRepresentable {
     var onScroll: ((CGFloat) -> Void)? = nil
     /// Callback: пользователь проскроллил превью (активная строка по центру, следующая строка, смещение, общая дробь)
     var onScrollPosition: ((Int, Int?, CGFloat, CGFloat) -> Void)? = nil
+    /// Конец пользовательского жеста превью (payload.ended). Не позиция.
+    var onScrollGestureEnded: (() -> Void)? = nil
     /// Callback: клик по элементу в превью (передает номер строки)
     var onElementClicked: ((Int) -> Void)? = nil
     /// Callback: редактирование элемента в превью (номер строки, новый текст)
@@ -42,7 +44,7 @@ struct WebPreviewView: NSViewRepresentable {
     var hideScrollbar: Bool = false
 
     func makeCoordinator() -> Coordinator {
-        let coord = Coordinator(onScroll: onScroll, onScrollPosition: onScrollPosition, onElementClicked: onElementClicked, onElementEdited: onElementEdited)
+        let coord = Coordinator(onScroll: onScroll, onScrollPosition: onScrollPosition, onScrollGestureEnded: onScrollGestureEnded, onElementClicked: onElementClicked, onElementEdited: onElementEdited)
         coord.onTableCellEdited = onTableCellEdited
         coord.onTableAddRow = onTableAddRow
         coord.onTableAddCol = onTableAddCol
@@ -72,7 +74,7 @@ struct WebPreviewView: NSViewRepresentable {
         config.userContentController = userContentController
 
         let webView = WKWebView(frame: .zero, configuration: config)
-        webView.setValue(true, forKey: "drawsBackground")
+        webView.setValue(false, forKey: "drawsBackground")
         // Цвет подложки webView строго совпадает с выбранной темой (исключает белый флэш)
         let bgNSColor = SettingsStore.shared.renderTheme.nsBackgroundColor(for: SettingsStore.shared.theme)
         webView.underPageBackgroundColor = bgNSColor
@@ -112,6 +114,7 @@ struct WebPreviewView: NSViewRepresentable {
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.onScroll = onScroll
         context.coordinator.onScrollPosition = onScrollPosition
+        context.coordinator.onScrollGestureEnded = onScrollGestureEnded
         context.coordinator.onElementClicked = onElementClicked
         context.coordinator.onElementEdited = onElementEdited
         context.coordinator.onTableCellEdited = onTableCellEdited
@@ -215,6 +218,7 @@ struct WebPreviewView: NSViewRepresentable {
         var messageHandlerWrappers: [WeakScriptMessageHandler] = []
         var onScroll: ((CGFloat) -> Void)?
         var onScrollPosition: ((Int, Int?, CGFloat, CGFloat) -> Void)?
+        var onScrollGestureEnded: (() -> Void)?
         var onElementClicked: ((Int) -> Void)?
         var onElementEdited: ((Int, String) -> Void)?
         var onTableCellEdited: ((Int, Int, Int, String) -> Void)?
@@ -244,12 +248,17 @@ struct WebPreviewView: NSViewRepresentable {
                 if (document.hasFocus() && document.activeElement && document.activeElement.hasAttribute('contenteditable')) {
                     return;
                 }
+                var beforeY = window.scrollY || window.pageYOffset;
                 _isProgrammatic = true;
                 document.body.innerHTML = \(jsonBodyString)[0];
                 var maxScroll = document.body.scrollHeight - window.innerHeight;
-                if (maxScroll > 0) window.scrollTo(0, \(fraction) * maxScroll);
+                var targetY = maxScroll > 0 ? \(fraction) * maxScroll : beforeY;
+                if (maxScroll > 0) window.scrollTo(0, targetY);
                 if (window._rebuildBlocksCache) window._rebuildBlocksCache();
-                setTimeout(function() { _isProgrammatic = false; }, 80);
+                var afterY = window.scrollY || window.pageYOffset;
+                if (afterY === beforeY || maxScroll <= 0) {
+                    _isProgrammatic = false;
+                }
             })();
             """
             webView.evaluateJavaScript(js, completionHandler: nil)
@@ -333,9 +342,10 @@ struct WebPreviewView: NSViewRepresentable {
             }
         }
 
-        init(onScroll: ((CGFloat) -> Void)?, onScrollPosition: ((Int, Int?, CGFloat, CGFloat) -> Void)? = nil, onElementClicked: ((Int) -> Void)?, onElementEdited: ((Int, String) -> Void)?) {
+        init(onScroll: ((CGFloat) -> Void)?, onScrollPosition: ((Int, Int?, CGFloat, CGFloat) -> Void)? = nil, onScrollGestureEnded: (() -> Void)? = nil, onElementClicked: ((Int) -> Void)?, onElementEdited: ((Int, String) -> Void)?) {
             self.onScroll = onScroll
             self.onScrollPosition = onScrollPosition
+            self.onScrollGestureEnded = onScrollGestureEnded
             self.onElementClicked = onElementClicked
             self.onElementEdited = onElementEdited
         }
@@ -445,18 +455,28 @@ struct WebPreviewView: NSViewRepresentable {
             // R7: имена — из PreviewMessageHandlerName, payload — Codable-структуры.
             if message.name == PreviewMessageHandlerName.scrollHandler.rawValue {
                 if let payload = PreviewBridgeScript.decode(ScrollPositionPayload.self, from: message.body) {
+                    let ended = payload.ended == true
                     DispatchQueue.main.async {
-                        self.onScrollPosition?(payload.line, payload.nextLine, CGFloat(payload.offset), CGFloat(payload.fraction))
-                        self.onScroll?(CGFloat(payload.fraction))
+                        if ended {
+                            self.onScrollGestureEnded?()
+                        } else {
+                            self.onScrollPosition?(payload.line, payload.nextLine, CGFloat(payload.offset), CGFloat(payload.fraction))
+                            self.onScroll?(CGFloat(payload.fraction))
+                        }
                     }
                 } else if let dict = message.body as? [String: Any],
                           let fraction = dict["fraction"] as? Double {
                     let line = dict["line"] as? Int ?? 1
                     let nextLine = dict["nextLine"] as? Int
                     let offset = dict["offset"] as? Double ?? 0.0
+                    let ended = (dict["ended"] as? Bool) == true
                     DispatchQueue.main.async {
-                        self.onScrollPosition?(line, nextLine, CGFloat(offset), CGFloat(fraction))
-                        self.onScroll?(CGFloat(fraction))
+                        if ended {
+                            self.onScrollGestureEnded?()
+                        } else {
+                            self.onScrollPosition?(line, nextLine, CGFloat(offset), CGFloat(fraction))
+                            self.onScroll?(CGFloat(fraction))
+                        }
                     }
                 } else if let fraction = message.body as? Double {
                     let cgFraction = CGFloat(fraction)

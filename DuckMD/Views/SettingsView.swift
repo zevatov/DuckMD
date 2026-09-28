@@ -3,16 +3,98 @@ import SwiftUI
 /// Настройки — единый экран с секциями, Apple-стиль.
 struct SettingsView: View {
     @ObservedObject private var settings = SettingsStore.shared
+    @ObservedObject private var updateChecker = UpdateChecker.shared
     @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                // MARK: — Header (ReTypeR style: App identity + links + update indicator)
+                HStack(spacing: 14) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.yellow.opacity(0.85), Color.orange.opacity(0.95)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 44, height: 44)
+                            .shadow(color: Color.orange.opacity(0.25), radius: 6, x: 0, y: 2)
+                        DuckLogo(size: 26)
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("DuckMD")
+                            .font(.system(size: 18, weight: .bold))
+                        HStack(spacing: 6) {
+                            Text("Быстрый Markdown редактор • Версия \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.6.16")")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+
+                            if case .updateAvailable(let version, _) = updateChecker.status {
+                                Button(action: {
+                                    updateChecker.openUpdateTarget()
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Circle()
+                                            .fill(Color.orange)
+                                            .frame(width: 6, height: 6)
+                                        Text("Доступна \(version)")
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .foregroundColor(.orange)
+                                    }
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.orange.opacity(0.12))
+                                    .cornerRadius(4)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    Spacer()
+
+                    HStack(spacing: 8) {
+                        Link(destination: URL(string: "https://t.me/+8oSXf_D7EwEyYzZi")!) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "paperplane.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Color(red: 0.2, green: 0.65, blue: 0.95))
+                                Text("Telegram")
+                                    .font(.system(size: 11, weight: .medium))
+                            }
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(Color.primary.opacity(0.06))
+                            .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+
+                        Link(destination: URL(string: "https://github.com/zevatov/DuckMD")!) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "curlybraces")
+                                    .font(.system(size: 11))
+                                Text("GitHub")
+                                    .font(.system(size: 11, weight: .medium))
+                            }
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(Color.primary.opacity(0.06))
+                            .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.bottom, 4)
+
                 // MARK: — Оформление
-                sectionHeader("Оформление", icon: "paintpalette")
-                
-                GroupBox {
-                    VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 8) {
+                    sectionHeader("Оформление", icon: "paintpalette")
+                    
+                    settingsCard {
                         // Тема
                         HStack {
                             Text("Тема")
@@ -76,14 +158,13 @@ struct SettingsView: View {
                         }
                         Slider(value: $settings.readingWidth, in: 480...1200, step: 20)
                     }
-                    .padding(6)
                 }
                 
                 // MARK: — Редактор
-                sectionHeader("Редактор", icon: "square.and.pencil")
-                
-                GroupBox {
-                    VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 8) {
+                    sectionHeader("Редактор", icon: "square.and.pencil")
+                    
+                    settingsCard {
                         HStack {
                             Text("Размер шрифта")
                             Spacer()
@@ -101,25 +182,23 @@ struct SettingsView: View {
                         Toggle("Синхронный скролл в Split", isOn: $settings.syncScroll)
                         Toggle("Номера строк в редакторе", isOn: $settings.showLineNumbers)
                     }
-                    .padding(6)
                 }
                 
-                // MARK: — Приватность превью (Этап 2, SPEC N-6)
-                sectionHeader("Приватность", icon: "lock.shield")
-                
-                GroupBox {
-                    VStack(alignment: .leading, spacing: 14) {
+                // MARK: — Приватность превью
+                VStack(alignment: .leading, spacing: 8) {
+                    sectionHeader("Приватность", icon: "lock.shield")
+                    
+                    settingsCard {
                         Toggle("Загружать удалённые изображения", isOn: $settings.allowRemoteImages)
                             .help("Выключено: http/https-картинки в превью не загружаются (защита от трекинг-пикселей). Локальные изображения не затрагиваются.")
                     }
-                    .padding(6)
                 }
                 
                 // MARK: — Файлы
-                sectionHeader("Файлы", icon: "folder")
-                
-                GroupBox {
-                    VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 8) {
+                    sectionHeader("Файлы", icon: "folder")
+                    
+                    settingsCard {
                         Toggle("Автосохранение при вводе", isOn: $settings.autosaveEnabled)
                         
                         Divider()
@@ -210,45 +289,14 @@ struct SettingsView: View {
                             }
                         }
                     }
-                    .padding(6)
                 }
-                
-                Spacer(minLength: 8)
-                
-                HStack(spacing: 8) {
-                    Spacer()
-                    
-                    Text("DuckMD · Версия \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(.secondary)
-                    
-                    Text("•")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary.opacity(0.4))
-                    
-                    Link(destination: URL(string: "https://t.me/")!) {
-                        Image(systemName: "paperplane.fill")
-                            .font(.system(size: 11))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundColor(.secondary)
-                    .help("Telegram")
-                    
-                    Link(destination: URL(string: "https://github.com/")!) {
-                        Image(systemName: "chevron.left.forwardslash.chevron.right")
-                            .font(.system(size: 11))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundColor(.secondary)
-                    .help("GitHub")
-                    
-                    Spacer()
-                }
-                .padding(.top, 4)
             }
             .padding(24)
         }
-        .frame(width: 520, height: 580)
+        .frame(width: 530, height: 620)
+        .onAppear {
+            updateChecker.checkForUpdates()
+        }
     }
     
     // MARK: - Section Header
@@ -261,6 +309,21 @@ struct SettingsView: View {
             Text(title)
                 .font(.system(size: 14, weight: .bold))
         }
+    }
+
+    // MARK: - Card Container
+    
+    private func settingsCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            content()
+        }
+        .padding(14)
+        .background(Color.primary.opacity(0.035))
+        .cornerRadius(10)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.primary.opacity(0.07), lineWidth: 1)
+        )
     }
     
     // MARK: - Theme Tile

@@ -293,12 +293,18 @@ final class MarkdownDocument: ObservableObject, ReferenceFileDocument {
         .table-container {
             position: relative;
             margin: 20px 0;
-            display: inline-block;
+            display: block;
             max-width: 100%;
+            overflow: visible;
+            padding: 14px;
+            box-sizing: border-box;
         }
         .table-container table {
             margin: 0 !important;
-            border-collapse: collapse;
+            overflow: visible;
+            border-radius: 0;
+            border-collapse: separate;
+            border-spacing: 0;
         }
         .table-action-btn {
             width: 20px;

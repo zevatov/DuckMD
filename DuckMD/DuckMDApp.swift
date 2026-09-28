@@ -235,6 +235,7 @@ struct MainContainerView: View {
                 HubView()
             }
         }
+        .background(Color(nsColor: .windowBackgroundColor))
         .animation(.easeInOut(duration: 0.18), value: appState.showHub)
     }
 }

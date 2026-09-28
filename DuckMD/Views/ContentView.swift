@@ -39,6 +39,10 @@ struct ContentView: View {
     /// + JSON write раньше шли на main с каждого нажатия). onAppear/rename/save —
     /// по-прежнему немедленно.
     @State private var recentDebounceWork: DispatchWorkItem? = nil
+    /// Состояние targeted у onDrop документа.
+    @State private var isTargeted = false
+    /// true, пока тянут разделитель split. Только запрет оверлея дропа.
+    @State private var isDraggingSplitter = false
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -119,9 +123,10 @@ struct ContentView: View {
             }
             updateEditableFileName()
         }
-        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+        .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
             handleDrop(providers: providers)
         }
+        .fileDropOverlay(isPresented: isTargeted && !isDraggingSplitter, mode: .open)
         .background(
             WindowAccessor(callback: { window in
                 if let window = window {
@@ -523,7 +528,8 @@ struct ContentView: View {
             document: document,
             onPendingExternalText: { external, editor in
                 queueExternalUpdate(external: external, editor: editor)
-            }
+            },
+            isDraggingSplitter: $isDraggingSplitter
         )
     }
 
@@ -735,7 +741,7 @@ struct ContentView: View {
     private func saveDocumentAs() {
         let savePanel = NSSavePanel()
         savePanel.allowedContentTypes = [.markdownDoc]
-        savePanel.nameFieldStringValue = documentTitle + ".md"
+        savePanel.nameFieldStringValue = suggestedSaveAsFileName()
         if !SettingsStore.shared.defaultSavePath.isEmpty {
             savePanel.directoryURL = URL(fileURLWithPath: SettingsStore.shared.defaultSavePath)
         }
@@ -767,6 +773,27 @@ struct ContentView: View {
         } catch {
             showFileError(error)
         }
+    }
+
+    /// Имя поля «Сохранить как»: шапка редактора (`editableFileName`), не первая
+    /// строка тела. Панель только предлагает имя — открытый файл не переименовывается.
+    private func suggestedSaveAsFileName() -> String {
+        var name = editableFileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if name.isEmpty {
+            name = "Без названия"
+        }
+        name = name
+            .replacingOccurrences(of: "/", with: "")
+            .replacingOccurrences(of: "\\", with: "")
+            .replacingOccurrences(of: ":", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if name.isEmpty {
+            name = "Без названия"
+        }
+        if !name.lowercased().hasSuffix(".md") {
+            name += ".md"
+        }
+        return name
     }
 
     private func updateEditableFileName() {
