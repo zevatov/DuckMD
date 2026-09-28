@@ -8,7 +8,7 @@
 [![Swift 5](https://img.shields.io/badge/Swift-5-F05138?style=for-the-badge&logo=swift&logoColor=white)](https://swift.org)
 [![Tests 140/140 local](https://img.shields.io/badge/Tests-140%2F140%20local%20run-34C759?style=for-the-badge&logo=xcode&logoColor=white)](DuckMDTests/)
 [![License MIT](https://img.shields.io/badge/License-MIT-007AFF?style=for-the-badge)](LICENSE)
-[![Published release v0.6.15](https://img.shields.io/badge/Published%20release-v0.6.15%20%C2%B7%20sources%200.6.18%20unpublished-FFAA00?style=for-the-badge&logo=apple)](https://github.com/zevatov/DuckMD/releases)
+[![Published release v0.6.18](https://img.shields.io/badge/Published%20release-v0.6.18-34C759?style=for-the-badge&logo=apple)](https://github.com/zevatov/DuckMD/releases/tag/v0.6.18)
 
 <br/>
 
@@ -18,7 +18,7 @@
 
 <br/>
 
-DMG 0.6.18 в Releases нет — ставьте локальную сборку из [раздела ниже](#сборка-и-запуск-локально) • [ Возможности ](#-возможности-текущих-исходников) • [ Установка ](#-установка) • [ Документация ](#-документация) • [ Сборка ](#-сборка-из-исходников)
+[Скачать DuckMD 0.6.18](https://github.com/zevatov/DuckMD/releases/download/v0.6.18/DuckMD-0.6.18.dmg) • [ Возможности ](#-возможности-текущих-исходников) • [ Установка ](#-установка) • [ Документация ](#-документация) • [ Сборка ](#-сборка-из-исходников)
 
 </div>
 
@@ -36,9 +36,9 @@ DMG 0.6.18 в Releases нет — ставьте локальную сборку
 
 ### 📦 Установка
 
-1. Готового DMG для исходников 0.6.18 в [Releases](https://github.com/zevatov/DuckMD/releases) нет. Последний опубликованный релиз — v0.6.15; текущую версию соберите локально по [инструкции ниже](#сборка-и-запуск-локально).
-2. Откройте собранный образ и перетащите **DuckMD** в папку **Applications**.
-3. Запустите приложение. Локальная сборка подписывается сертификатом Apple Development с включённым Hardened Runtime, если сертификат найден.
+1. Скачайте [DuckMD-0.6.18.dmg](https://github.com/zevatov/DuckMD/releases/download/v0.6.18/DuckMD-0.6.18.dmg).
+2. Откройте образ и перетащите **DuckMD** в папку **Applications**.
+3. Первый запуск — правый клик по приложению → **Открыть**, потому что notarization нет.
 
 ---
 
@@ -101,9 +101,9 @@ xcodebuild test -project DuckMD.xcodeproj -scheme DuckMD -destination 'platform=
 - macOS 26 или новее, Apple Silicon или Intel.
 - Для сборки: Xcode с toolchain macOS 26 и [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
 
-### Готовый DMG — планируемый канал
+### Готовый DMG
 
-Публикация готового `DuckMD.dmg` в [Releases](https://github.com/zevatov/DuckMD/releases) запланирована, но релиз для текущей версии исходников (0.6.18) ещё **не опубликован** — готового ассета пока нет. Пока используйте локальную сборку ниже.
+Канал уже есть: [DuckMD-0.6.18.dmg](https://github.com/zevatov/DuckMD/releases/download/v0.6.18/DuckMD-0.6.18.dmg). Локальная сборка ниже остаётся альтернативой.
 
 ### Сборка и запуск локально
 
@@ -132,7 +132,7 @@ codesign --verify --strict --verbose=2 "build/dist/DuckMD-<версия>.app"
 
 ### «Приложение повреждено» / «не удаётся проверить разработчика»
 
-Так Gatekeeper реагирует на карантинный атрибут `com.apple.quarantine`, который macOS ставит любым файлам, загруженным из сети, — сам файл приложения при этом не повреждён. Для собственной сборки DuckMD достаточно одного из двух действий:
+Так Gatekeeper реагирует на карантинный атрибут `com.apple.quarantine`, который macOS ставит любым файлам, загруженным из сети, — сам файл приложения при этом не повреждён. У опубликованного DMG notarization нет, поэтому достаточно одного из двух действий:
 
 - правый клик по `.app` → **«Открыть»** и подтвердить запуск в диалоге;
 - либо снять атрибут командой:
@@ -141,7 +141,7 @@ codesign --verify --strict --verbose=2 "build/dist/DuckMD-<версия>.app"
 xattr -dr com.apple.quarantine /Applications/DuckMD.app
 ```
 
-Это описание — только для самостоятельно собранного DuckMD. Отключать Gatekeeper глобально (например, через `spctl --master-disable`) не следует.
+Отключать Gatekeeper глобально (например, через `spctl --master-disable`) не следует.
 
 ---
 
